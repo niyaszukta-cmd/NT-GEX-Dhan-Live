@@ -1,5 +1,6 @@
 # ============================================================================
 # NYZTrade LIVE GEX/DEX Dashboard - WITH TELEGRAM AUTO-UPDATES
+# Telegram credentials configured in code (not UI)
 # ============================================================================
 
 import streamlit as st
@@ -16,8 +17,6 @@ from dataclasses import dataclass
 from typing import Optional, Dict, List
 import warnings
 import io
-import base64
-from PIL import Image
 warnings.filterwarnings('ignore')
 
 # ============================================================================
@@ -148,7 +147,28 @@ st.markdown("""
 @dataclass
 class DhanConfig:
     client_id: str = "1100480354"
-    access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY5NjgyOTczLCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2OTU5NjU3MywidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.tBOgIqwb48fvy5IXc7d9Ln9-Rwfft1z92CGOBmkFe2_JSoQ5R-uhiP5UEozD_GeD68EYeHAIom5PX7dBI89cYw"
+    access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY5MzI2MTMxLCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2OTIzOTczMSwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.4trDIGZjd0TqGLrVL4dIk3vrrOexCnJ0AYbls7IlBf4dB74zZj00jgTGjmWyfO66T8nVnPVMKRb-OyGKkwva3Q"
+
+# ============================================================================
+# TELEGRAM CONFIGURATION - ⬇️ EDIT YOUR CREDENTIALS HERE ⬇️
+# ============================================================================
+
+@dataclass
+class TelegramConfig:
+    # 🤖 Bot Token - Get from @BotFather on Telegram
+    # Example: "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+    bot_token: str = "8429392375:AAESOsxilsEOaj..."  # ← PASTE YOUR FULL TOKEN HERE
+    
+    # 💬 Chat ID - Your channel/group ID
+    # Example: "-1001234567890" (for channel, starts with -100)
+    chat_id: str = "-1002570595829"  # ← PASTE YOUR CHAT ID HERE
+    
+    # ⚙️ Enable/Disable Telegram Updates (True/False)
+    enabled: bool = True  # Set to False to completely disable Telegram
+
+TELEGRAM_CONFIG = TelegramConfig()
+
+# ============================================================================
 
 DHAN_SECURITY_IDS = {
     "NIFTY": 13, "BANKNIFTY": 25, "FINNIFTY": 27, "MIDCPNIFTY": 442
@@ -615,10 +635,10 @@ def fig_to_image_bytes(fig: go.Figure) -> bytes:
 # TELEGRAM AUTO-UPDATE FUNCTION
 # ============================================================================
 
-def send_telegram_update(df: pd.DataFrame, meta: Dict, bot_token: str, chat_id: str) -> bool:
+def send_telegram_update(df: pd.DataFrame, meta: Dict) -> bool:
     """Send GEX chart and summary to Telegram"""
     try:
-        telegram = TelegramSender(bot_token, chat_id)
+        telegram = TelegramSender(TELEGRAM_CONFIG.bot_token, TELEGRAM_CONFIG.chat_id)
         spot_price = meta['spot_price']
         
         # Calculate metrics
@@ -680,7 +700,7 @@ def send_telegram_update(df: pd.DataFrame, meta: Dict, bot_token: str, chat_id: 
 def main():
     # Initialize session state
     if 'telegram_enabled' not in st.session_state:
-        st.session_state.telegram_enabled = False
+        st.session_state.telegram_enabled = TELEGRAM_CONFIG.enabled
     if 'last_telegram_update' not in st.session_state:
         st.session_state.last_telegram_update = None
     
@@ -740,61 +760,41 @@ def main():
         )
         
         st.markdown("---")
-        st.markdown("### 📱 Telegram Integration")
+        st.markdown("### 📱 Telegram Updates")
         
-        telegram_enabled = st.checkbox("Enable Telegram Updates", value=st.session_state.telegram_enabled)
+        telegram_enabled = st.checkbox(
+            "Enable Auto-Updates", 
+            value=st.session_state.telegram_enabled,
+            help="Send GEX chart every 5 minutes to Telegram"
+        )
         
         if telegram_enabled:
-            st.info("💡 Get updates every 5 minutes")
+            st.success("✅ Telegram Configured")
             
-            bot_token = st.text_input(
-                "Bot Token",
-                type="password",
-                placeholder="123456:ABC-DEF1234ghIkl...",
-                help="Get from @BotFather"
-            )
+            # Show masked credentials
+            token_masked = f"{TELEGRAM_CONFIG.bot_token[:15]}...{TELEGRAM_CONFIG.bot_token[-8:]}"
+            st.caption(f"🤖 Bot: {token_masked}")
+            st.caption(f"💬 Chat: {TELEGRAM_CONFIG.chat_id}")
             
-            chat_id = st.text_input(
-                "Chat ID",
-                placeholder="-1001234567890",
-                help="Your channel/group chat ID"
-            )
+            if st.session_state.last_telegram_update:
+                last_update = st.session_state.last_telegram_update
+                st.caption(f"📤 Last: {last_update.strftime('%H:%M:%S')}")
             
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("🔍 Test Bot", use_container_width=True):
-                    if bot_token and chat_id:
-                        telegram = TelegramSender(bot_token, chat_id)
-                        if telegram.test_connection():
-                            if telegram.send_message("✅ <b>Bot Connected!</b>\n\nNYZTrade updates will arrive here every 5 minutes."):
-                                st.success("✅ Test message sent!")
-                            else:
-                                st.error("❌ Failed to send message. Check chat ID.")
-                        else:
-                            st.error("❌ Invalid bot token")
+            # Test button
+            if st.button("🧪 Test Connection", use_container_width=True):
+                telegram = TelegramSender(TELEGRAM_CONFIG.bot_token, TELEGRAM_CONFIG.chat_id)
+                if telegram.test_connection():
+                    if telegram.send_message("✅ <b>Test Successful!</b>\n\nNYZTrade bot is working perfectly!"):
+                        st.success("✅ Message sent!")
                     else:
-                        st.warning("Enter both token & chat ID")
-            
-            with col2:
-                if st.button("💾 Save", use_container_width=True):
-                    if bot_token and chat_id:
-                        st.session_state.bot_token = bot_token
-                        st.session_state.chat_id = chat_id
-                        st.session_state.telegram_enabled = True
-                        st.success("✅ Saved!")
-                    else:
-                        st.error("❌ Enter both fields")
-            
-            if st.session_state.telegram_enabled and 'bot_token' in st.session_state:
-                st.success("✅ Telegram configured")
-                
-                if st.session_state.last_telegram_update:
-                    last_update = st.session_state.last_telegram_update
-                    st.caption(f"Last update: {last_update.strftime('%H:%M:%S')}")
-        
+                        st.error("❌ Failed to send. Check chat ID.")
+                else:
+                    st.error("❌ Invalid bot token")
         else:
-            st.session_state.telegram_enabled = False
+            st.info("📱 Telegram updates disabled")
+            st.caption("Enable checkbox above to activate")
+        
+        st.session_state.telegram_enabled = telegram_enabled
         
         st.markdown("---")
         auto_refresh = st.checkbox("🔄 Auto-Refresh", value=False)
@@ -823,7 +823,7 @@ def main():
             st.rerun()
     
     # Telegram auto-update check (every 5 minutes = 300 seconds)
-    if st.session_state.telegram_enabled and 'bot_token' in st.session_state:
+    if st.session_state.telegram_enabled and TELEGRAM_CONFIG.enabled:
         if st.session_state.get('fetched', False) and 'df' in st.session_state:
             last_update = st.session_state.last_telegram_update
             
@@ -832,7 +832,7 @@ def main():
                 df = st.session_state.df
                 meta = st.session_state.meta
                 
-                if send_telegram_update(df, meta, st.session_state.bot_token, st.session_state.chat_id):
+                if send_telegram_update(df, meta):
                     st.session_state.last_telegram_update = datetime.now()
                     st.success(f"📱 Telegram update sent at {datetime.now(IST).strftime('%H:%M:%S')}")
     
@@ -947,17 +947,19 @@ def main():
         st.markdown("---")
         
         # Telegram status
-        if st.session_state.telegram_enabled and 'bot_token' in st.session_state:
+        if st.session_state.telegram_enabled and TELEGRAM_CONFIG.enabled:
             if st.session_state.last_telegram_update:
                 next_update_time = st.session_state.last_telegram_update + timedelta(seconds=300)
                 seconds_until_next = (next_update_time - datetime.now()).total_seconds()
                 
                 if seconds_until_next > 0:
-                    st.info(f"📱 Next Telegram update in {int(seconds_until_next)} seconds")
+                    minutes = int(seconds_until_next // 60)
+                    seconds = int(seconds_until_next % 60)
+                    st.info(f"📱 Next Telegram update in {minutes}m {seconds}s")
                 else:
                     st.warning("📱 Telegram update pending...")
             else:
-                st.info("📱 Telegram update will be sent on next refresh")
+                st.info("📱 First Telegram update on next refresh")
         
         # Charts
         tabs = st.tabs(["🎯 GEX", "📊 DEX", "⚡ Combined", "📋 Open Interest", "📥 Data"])
@@ -1004,12 +1006,10 @@ def main():
         - ⏰ Timestamp on every update
         
         **Setup:**
-        1. Create bot with @BotFather on Telegram
-        2. Add bot to your channel/group
-        3. Get chat ID (use @userinfobot)
-        4. Enter credentials in sidebar
-        5. Test & Save
-        6. Enable "Telegram Updates"
+        1. Edit `app.py` lines 85-90 with your credentials
+        2. Deploy to Railway
+        3. Enable "Telegram Updates" checkbox
+        4. Done! Updates auto-send every 5 min
         
         **Other Features:**
         - 🔴 Real-time market data
@@ -1021,7 +1021,7 @@ def main():
         1. Configure settings in sidebar
         2. Enable Telegram (optional)
         3. Click "Fetch LIVE Data"
-        4. Charts update every 5 min to Telegram
+        4. Charts update automatically
         """)
     
     # Footer
