@@ -147,8 +147,7 @@ st.markdown("""
 @dataclass
 class DhanConfig:
     client_id: str = "1100480354"
-    access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY5MzI2MTMxLCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2OTIzOTczMSwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.4trDIGZjd0TqGLrVL4dIk3vrrOexCnJ0AYbls7IlBf4dB74zZj00jgTGjmWyfO66T8nVnPVMKRb-OyGKkwva3Q"
-
+    access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY5NjgyOTczLCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2OTU5NjU3MywidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.tBOgIqwb48fvy5IXc7d9Ln9-Rwfft1z92CGOBmkFe2_JSoQ5R-uhiP5UEozD_GeD68EYeHAIom5PX7dBI89cYw"
 # ============================================================================
 # TELEGRAM CONFIGURATION - ⬇️ EDIT YOUR CREDENTIALS HERE ⬇️
 # ============================================================================
@@ -157,7 +156,7 @@ class DhanConfig:
 class TelegramConfig:
     # 🤖 Bot Token - Get from @BotFather on Telegram
     # Example: "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
-    bot_token: str = "8429392375:AAESOsxilsEOaj..."  # ← PASTE YOUR FULL TOKEN HERE
+    bot_token: str = "8429392375:AAESOsXilsEOapr_dch-VWLXJgd4YIssJnY"  # ← PASTE YOUR FULL TOKEN HERE
     
     # 💬 Chat ID - Your channel/group ID
     # Example: "-1001234567890" (for channel, starts with -100)
