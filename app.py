@@ -1,13 +1,11 @@
 # ============================================================================
-# NYZTrade LIVE GEX/DEX Dashboard - WITH TELEGRAM AUTO-UPDATES
-# Telegram credentials configured in code (not UI)
+# NYZTrade LIVE GEX/DEX Dashboard - WITH TELEGRAM + DEBUGGING
 # ============================================================================
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from scipy.stats import norm
 from datetime import datetime, timedelta
 import pytz
@@ -16,7 +14,7 @@ import time
 from dataclasses import dataclass
 from typing import Optional, Dict, List
 import warnings
-import io
+import traceback
 warnings.filterwarnings('ignore')
 
 # ============================================================================
@@ -147,23 +145,16 @@ st.markdown("""
 @dataclass
 class DhanConfig:
     client_id: str = "1100480354"
-    access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY5NjgyOTczLCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2OTU5NjU3MywidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.tBOgIqwb48fvy5IXc7d9Ln9-Rwfft1z92CGOBmkFe2_JSoQ5R-uhiP5UEozD_GeD68EYeHAIom5PX7dBI89cYw"
+    access_token: str =  "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY5NjgyOTczLCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2OTU5NjU3MywidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.tBOgIqwb48fvy5IXc7d9Ln9-Rwfft1z92CGOBmkFe2_JSoQ5R-uhiP5UEozD_GeD68EYeHAIom5PX7dBI89cYw"
 # ============================================================================
-# TELEGRAM CONFIGURATION - ⬇️ EDIT YOUR CREDENTIALS HERE ⬇️
+# TELEGRAM CONFIGURATION - EDIT YOUR CREDENTIALS HERE
 # ============================================================================
 
 @dataclass
 class TelegramConfig:
-    # 🤖 Bot Token - Get from @BotFather on Telegram
-    # Example: "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
-    bot_token: str = "8429392375:AAESOsXilsEOapr_dch-VWLXJgd4YIssJnY"  # ← PASTE YOUR FULL TOKEN HERE
-    
-    # 💬 Chat ID - Your channel/group ID
-    # Example: "-1001234567890" (for channel, starts with -100)
-    chat_id: str = "-1002570595829"  # ← PASTE YOUR CHAT ID HERE
-    
-    # ⚙️ Enable/Disable Telegram Updates (True/False)
-    enabled: bool = True  # Set to False to completely disable Telegram
+    bot_token: str = "8429392375:AAESOsxilsEOaj4YIss.lnY"  # ← PASTE YOUR FULL TOKEN
+    chat_id: str = "-1002570595829"  # ← PASTE YOUR CHAT ID
+    enabled: bool = True
 
 TELEGRAM_CONFIG = TelegramConfig()
 
@@ -354,7 +345,7 @@ def identify_gamma_flip_zones(df: pd.DataFrame, spot_price: float) -> List[Dict]
     return flip_zones
 
 # ============================================================================
-# DHAN LIVE API FETCHER
+# DHAN LIVE API FETCHER WITH EXTENSIVE DEBUGGING
 # ============================================================================
 
 class DhanLiveFetcher:
@@ -374,48 +365,156 @@ class DhanLiveFetcher:
         try:
             security_id = DHAN_SECURITY_IDS.get(symbol, 13)
             
-            # Get spot price
+            st.info(f"🔍 **Fetching data for {symbol}**")
+            st.info(f"📌 Security ID: {security_id}")
+            st.info(f"📅 Expiry: {expiry_flag} (Code: {expiry_code})")
+            st.info(f"🎯 Strikes: {', '.join(strikes)}")
+            
+            # ============================================================
+            # STEP 1: FETCH SPOT PRICE
+            # ============================================================
+            st.info("**STEP 1: Fetching spot price...**")
+            
             spot_payload = {"exchangeSegment": "NSE_FNO", "securityId": security_id}
-            spot_response = requests.post(f"{self.base_url}/marketfeed/quote", 
-                                         headers=self.headers, json=spot_payload, timeout=10)
             
-            spot_price = 0
-            if spot_response.status_code == 200:
-                spot_price = spot_response.json().get('data', {}).get('LTP', 0)
+            with st.expander("🔍 View Spot Request Details", expanded=False):
+                st.json(spot_payload)
+                st.code(f"URL: {self.base_url}/marketfeed/quote", language="text")
             
-            if spot_price == 0:
-                return None, spot_price
+            try:
+                spot_response = requests.post(
+                    f"{self.base_url}/marketfeed/quote",
+                    headers=self.headers,
+                    json=spot_payload,
+                    timeout=10
+                )
+                
+                st.info(f"📡 Response Status: {spot_response.status_code}")
+                
+                with st.expander("🔍 View Spot Response", expanded=False):
+                    st.json(spot_response.json())
+                
+                if spot_response.status_code != 200:
+                    st.error(f"❌ Spot API failed with status {spot_response.status_code}")
+                    st.error(f"Response: {spot_response.text}")
+                    return None, 0
+                
+                spot_data = spot_response.json()
+                spot_price = spot_data.get('data', {}).get('LTP', 0)
+                
+                if spot_price == 0:
+                    st.error("❌ Spot price is 0 or not found in response")
+                    st.error("Check 'data.LTP' field in response above")
+                    return None, 0
+                
+                st.success(f"✅ Spot Price: ₹{spot_price:,.2f}")
+                
+            except requests.exceptions.Timeout:
+                st.error("❌ Request timeout - Dhan API is slow/unresponsive")
+                return None, 0
+            except requests.exceptions.RequestException as e:
+                st.error(f"❌ Network error: {str(e)}")
+                return None, 0
+            except Exception as e:
+                st.error(f"❌ Unexpected error fetching spot: {str(e)}")
+                st.error(traceback.format_exc())
+                return None, 0
             
-            # Fetch option chain
+            # ============================================================
+            # STEP 2: FETCH OPTION CHAIN
+            # ============================================================
+            st.info(f"**STEP 2: Fetching option chain for {len(strikes)} strikes...**")
+            
             all_data = []
+            failed_strikes = []
             
-            for strike_type in strikes:
-                # CALL
+            for idx, strike_type in enumerate(strikes):
+                st.info(f"⏳ [{idx+1}/{len(strikes)}] Processing strike: {strike_type}")
+                
+                # CALL Option
                 call_payload = {
-                    "exchangeSegment": "NSE_FNO", "securityId": security_id,
-                    "instrument": "OPTIDX", "expiryFlag": expiry_flag,
-                    "expiryCode": expiry_code, "strike": strike_type, "drvOptionType": "CALL"
+                    "exchangeSegment": "NSE_FNO",
+                    "securityId": security_id,
+                    "instrument": "OPTIDX",
+                    "expiryFlag": expiry_flag,
+                    "expiryCode": expiry_code,
+                    "strike": strike_type,
+                    "drvOptionType": "CALL"
                 }
-                call_response = requests.post(f"{self.base_url}/optionchain", 
-                                             headers=self.headers, json=call_payload, timeout=10)
                 
-                # PUT
-                put_payload = call_payload.copy()
-                put_payload["drvOptionType"] = "PUT"
-                put_response = requests.post(f"{self.base_url}/optionchain", 
-                                            headers=self.headers, json=put_payload, timeout=10)
-                
-                if call_response.status_code != 200 or put_response.status_code != 200:
+                try:
+                    call_response = requests.post(
+                        f"{self.base_url}/optionchain",
+                        headers=self.headers,
+                        json=call_payload,
+                        timeout=10
+                    )
+                    
+                    if call_response.status_code != 200:
+                        st.warning(f"⚠️ CALL failed for {strike_type}: Status {call_response.status_code}")
+                        with st.expander(f"🔍 View CALL Response for {strike_type}", expanded=False):
+                            st.json(call_response.json())
+                        failed_strikes.append(f"{strike_type}-CALL")
+                        time.sleep(0.5)
+                        continue
+                    
+                    call_data = call_response.json().get('data', {})
+                    
+                    if not call_data:
+                        st.warning(f"⚠️ Empty CALL data for {strike_type}")
+                        failed_strikes.append(f"{strike_type}-CALL")
+                        time.sleep(0.5)
+                        continue
+                    
+                except Exception as e:
+                    st.error(f"❌ Exception fetching CALL {strike_type}: {str(e)}")
+                    failed_strikes.append(f"{strike_type}-CALL")
+                    time.sleep(0.5)
                     continue
                 
-                call_data = call_response.json().get('data', {})
-                put_data = put_response.json().get('data', {})
+                # PUT Option
+                put_payload = call_payload.copy()
+                put_payload["drvOptionType"] = "PUT"
                 
-                if not call_data or not put_data:
+                try:
+                    put_response = requests.post(
+                        f"{self.base_url}/optionchain",
+                        headers=self.headers,
+                        json=put_payload,
+                        timeout=10
+                    )
+                    
+                    if put_response.status_code != 200:
+                        st.warning(f"⚠️ PUT failed for {strike_type}: Status {put_response.status_code}")
+                        failed_strikes.append(f"{strike_type}-PUT")
+                        time.sleep(0.5)
+                        continue
+                    
+                    put_data = put_response.json().get('data', {})
+                    
+                    if not put_data:
+                        st.warning(f"⚠️ Empty PUT data for {strike_type}")
+                        failed_strikes.append(f"{strike_type}-PUT")
+                        time.sleep(0.5)
+                        continue
+                    
+                except Exception as e:
+                    st.error(f"❌ Exception fetching PUT {strike_type}: {str(e)}")
+                    failed_strikes.append(f"{strike_type}-PUT")
+                    time.sleep(0.5)
+                    continue
+                
+                # Extract data
+                strike_price = call_data.get('strike', 0)
+                
+                if strike_price == 0:
+                    st.warning(f"⚠️ Invalid strike price for {strike_type}")
+                    failed_strikes.append(strike_type)
+                    time.sleep(0.5)
                     continue
                 
                 all_data.append({
-                    'strike': call_data.get('strike', 0),
+                    'strike': strike_price,
                     'strike_type': strike_type,
                     'call_oi': call_data.get('openInterest', 0),
                     'put_oi': put_data.get('openInterest', 0),
@@ -426,12 +525,31 @@ class DhanLiveFetcher:
                     'spot_price': spot_price
                 })
                 
-                time.sleep(0.5)
+                st.success(f"✅ {strike_type}: Strike ₹{strike_price:,.0f} | OI C:{call_data.get('openInterest', 0):,} P:{put_data.get('openInterest', 0):,}")
+                
+                time.sleep(0.5)  # Rate limiting
+            
+            # Summary
+            st.success(f"✅ **Successfully fetched {len(all_data)}/{len(strikes)} strikes**")
+            
+            if failed_strikes:
+                st.warning(f"⚠️ **Failed strikes:** {', '.join(failed_strikes)}")
+            
+            if len(all_data) == 0:
+                st.error("❌ **No data collected from any strike!**")
+                st.error("**Possible reasons:**")
+                st.error("1. Selected strikes don't exist for this expiry")
+                st.error("2. Wrong expiry type (Weekly vs Monthly)")
+                st.error("3. API format changed")
+                st.error("**Try:** Different strikes or expiry selection")
+                return None, spot_price
             
             return all_data, spot_price
             
         except Exception as e:
-            st.error(f"API Error: {str(e)}")
+            st.error(f"❌ **Critical Error in fetch_live_option_chain:**")
+            st.error(str(e))
+            st.error(traceback.format_exc())
             return None, 0
     
     def process_live_data(self, symbol: str, strikes: List[str], 
@@ -439,10 +557,19 @@ class DhanLiveFetcher:
         config = SYMBOL_CONFIG.get(symbol, SYMBOL_CONFIG["NIFTY"])
         contract_size = config["contract_size"]
         
+        st.info("🚀 **Starting data fetch process...**")
+        
         raw_data, spot_price = self.fetch_live_option_chain(symbol, strikes, expiry_code, expiry_flag)
         
-        if not raw_data or spot_price == 0:
+        if raw_data is None or spot_price == 0:
+            st.error("❌ **Data fetch failed - see details above**")
             return None, None
+        
+        if len(raw_data) == 0:
+            st.error("❌ **No valid data to process**")
+            return None, None
+        
+        st.info(f"⚙️ **Processing {len(raw_data)} records...**")
         
         current_time = datetime.now(IST)
         processed_data = []
@@ -522,6 +649,8 @@ class DhanLiveFetcher:
             'expiry_code': expiry_code,
             'expiry_flag': expiry_flag
         }
+        
+        st.success(f"✅ **Processing complete! {len(df)} records ready**")
         
         return df, meta
 
@@ -855,7 +984,7 @@ def main():
                     df, meta = fetcher.process_live_data(symbol, strikes, expiry_code, expiry_flag)
                     
                     if df is None or len(df) == 0:
-                        st.error("❌ No data. Check market hours.")
+                        st.error("❌ Failed to fetch data - see debug details above")
                         return
                     
                     st.session_state.df = df
@@ -864,7 +993,8 @@ def main():
                     st.session_state.last_refresh = datetime.now()
                     st.rerun()
                 except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
+                    st.error(f"❌ Critical Error: {str(e)}")
+                    st.error(traceback.format_exc())
                     return
         
         # Display data
@@ -998,36 +1128,25 @@ def main():
         st.info("""
         👋 **Welcome to NYZTrade LIVE + Telegram!**
         
-        **🆕 Telegram Features:**
-        - 📱 Auto-send GEX chart every 5 minutes
-        - 📊 Summary with GEX, DEX, PCR metrics
-        - 🔄 Flip zone alerts
-        - ⏰ Timestamp on every update
-        
-        **Setup:**
-        1. Edit `app.py` lines 85-90 with your credentials
-        2. Deploy to Railway
-        3. Enable "Telegram Updates" checkbox
-        4. Done! Updates auto-send every 5 min
-        
-        **Other Features:**
-        - 🔴 Real-time market data
-        - 📊 GEX, DEX, Combined analysis
-        - 🔄 Gamma flip zones
+        **Features:**
+        - 📱 Auto-send GEX chart every 5 minutes to Telegram
+        - 📊 Real-time GEX, DEX, Combined analysis
+        - 🔄 Gamma flip zones detection
         - ⚡ Auto-refresh capability
+        - 📈 Full debugging mode
         
         **How to use:**
         1. Configure settings in sidebar
-        2. Enable Telegram (optional)
-        3. Click "Fetch LIVE Data"
-        4. Charts update automatically
+        2. Click "Fetch LIVE Data"
+        3. See detailed debug logs
+        4. Charts will display if successful
         """)
     
     # Footer
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; padding: 20px; color: #64748b; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;">
-    NYZTrade LIVE + Telegram | Auto-Updates Every 5 Min | ⚠️ Educational purposes only
+    NYZTrade LIVE + Telegram | Debug Mode ON | ⚠️ Educational purposes only
     </div>
     """, unsafe_allow_html=True)
 
