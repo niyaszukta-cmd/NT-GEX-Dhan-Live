@@ -1,11 +1,13 @@
 # ============================================================================
-# NYZTrade LIVE GEX/DEX Dashboard - WITH TELEGRAM + DEBUGGING
+# NYZTrade LIVE GEX/DEX Dashboard - FIXED VERSION
+# Telegram Auto-Updates + Proper Error Handling
 # ============================================================================
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from scipy.stats import norm
 from datetime import datetime, timedelta
 import pytz
@@ -14,7 +16,6 @@ import time
 from dataclasses import dataclass
 from typing import Optional, Dict, List
 import warnings
-import traceback
 warnings.filterwarnings('ignore')
 
 # ============================================================================
@@ -22,7 +23,7 @@ warnings.filterwarnings('ignore')
 # ============================================================================
 
 st.set_page_config(
-    page_title="NYZTrade LIVE + Telegram",
+    page_title="NYZTrade LIVE GEX/DEX",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -145,20 +146,15 @@ st.markdown("""
 @dataclass
 class DhanConfig:
     client_id: str = "1100480354"
-    access_token: str =  "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY5Nzc0MzIyLCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2OTY4NzkyMiwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.VuTq2uSDzTWelLiXUFIjf2xTfbytZeKvASQAUAWKk3jeXPy6xSo_-853lpUJPU8cdzmvQgkBs1pDNpgLxmkn-g"
-# ============================================================================
-# TELEGRAM CONFIGURATION - EDIT YOUR CREDENTIALS HERE
-# ============================================================================
+    access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY5Nzc0MzIyLCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2OTY4NzkyMiwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.VuTq2uSDzTWelLiXUFIjf2xTfbytZeKvASQAUAWKk3jeXPy6xSo_-853lpUJPU8cdzmvQgkBs1pDNpgLxmkn-g"
 
 @dataclass
 class TelegramConfig:
-    bot_token: str = "8429392375:AAESOsxilsEOaj4YIss.lnY"  # ← PASTE YOUR FULL TOKEN
-    chat_id: str = "-1002570595829"  # ← PASTE YOUR CHAT ID
+    bot_token: str = "YOUR_BOT_TOKEN_HERE"  # ← Edit this
+    chat_id: str = "YOUR_CHAT_ID_HERE"      # ← Edit this
     enabled: bool = True
 
 TELEGRAM_CONFIG = TelegramConfig()
-
-# ============================================================================
 
 DHAN_SECURITY_IDS = {
     "NIFTY": 13, "BANKNIFTY": 25, "FINNIFTY": 27, "MIDCPNIFTY": 442
@@ -174,7 +170,7 @@ SYMBOL_CONFIG = {
 IST = pytz.timezone('Asia/Kolkata')
 
 # ============================================================================
-# TELEGRAM BOT INTEGRATION
+# TELEGRAM BOT
 # ============================================================================
 
 class TelegramSender:
@@ -184,45 +180,29 @@ class TelegramSender:
         self.base_url = f"https://api.telegram.org/bot{bot_token}"
     
     def send_message(self, text: str) -> bool:
-        """Send text message to Telegram"""
         try:
             url = f"{self.base_url}/sendMessage"
-            payload = {
-                "chat_id": self.chat_id,
-                "text": text,
-                "parse_mode": "HTML"
-            }
+            payload = {"chat_id": self.chat_id, "text": text, "parse_mode": "HTML"}
             response = requests.post(url, json=payload, timeout=10)
             return response.status_code == 200
-        except Exception as e:
-            st.error(f"Telegram message error: {str(e)}")
+        except:
             return False
     
     def send_photo(self, image_bytes: bytes, caption: str = "") -> bool:
-        """Send photo to Telegram"""
         try:
             url = f"{self.base_url}/sendPhoto"
             files = {'photo': ('chart.png', image_bytes, 'image/png')}
-            data = {
-                'chat_id': self.chat_id,
-                'caption': caption,
-                'parse_mode': 'HTML'
-            }
+            data = {'chat_id': self.chat_id, 'caption': caption, 'parse_mode': 'HTML'}
             response = requests.post(url, files=files, data=data, timeout=30)
             return response.status_code == 200
-        except Exception as e:
-            st.error(f"Telegram photo error: {str(e)}")
+        except:
             return False
     
     def test_connection(self) -> bool:
-        """Test bot connection"""
         try:
             url = f"{self.base_url}/getMe"
             response = requests.get(url, timeout=10)
-            if response.status_code == 200:
-                bot_info = response.json()
-                return bot_info.get('ok', False)
-            return False
+            return response.status_code == 200 and response.json().get('ok', False)
         except:
             return False
 
@@ -315,22 +295,14 @@ def identify_gamma_flip_zones(df: pd.DataFrame, spot_price: float) -> List[Dict]
             
             if spot_price < flip_strike:
                 if current_gex > 0:
-                    direction = "upward"
-                    arrow = "↑"
-                    color = "#ef4444"
+                    direction, arrow, color = "upward", "↑", "#ef4444"
                 else:
-                    direction = "downward"
-                    arrow = "↓"
-                    color = "#10b981"
+                    direction, arrow, color = "downward", "↓", "#10b981"
             else:
                 if current_gex < 0:
-                    direction = "downward"
-                    arrow = "↓"
-                    color = "#10b981"
+                    direction, arrow, color = "downward", "↓", "#10b981"
                 else:
-                    direction = "upward"
-                    arrow = "↑"
-                    color = "#ef4444"
+                    direction, arrow, color = "upward", "↑", "#ef4444"
             
             flip_zones.append({
                 'strike': flip_strike,
@@ -345,7 +317,7 @@ def identify_gamma_flip_zones(df: pd.DataFrame, spot_price: float) -> List[Dict]
     return flip_zones
 
 # ============================================================================
-# DHAN LIVE API FETCHER WITH EXTENSIVE DEBUGGING
+# DHAN LIVE FETCHER - USING ROLLING API (MORE RELIABLE)
 # ============================================================================
 
 class DhanLiveFetcher:
@@ -360,234 +332,129 @@ class DhanLiveFetcher:
         self.bs_calc = BlackScholesCalculator()
         self.risk_free_rate = 0.07
     
-    def fetch_live_option_chain(self, symbol: str, strikes: List[str], 
-                                expiry_code: int = 1, expiry_flag: str = "WEEK"):
+    def fetch_rolling_option_current(self, symbol: str, strike_type: str, option_type: str,
+                                     expiry_code: int = 1, expiry_flag: str = "WEEK"):
+        """Fetch current/recent data using rolling API - MORE RELIABLE"""
         try:
             security_id = DHAN_SECURITY_IDS.get(symbol, 13)
             
-            st.info(f"🔍 **Fetching data for {symbol}**")
-            st.info(f"📌 Security ID: {security_id}")
-            st.info(f"📅 Expiry: {expiry_flag} (Code: {expiry_code})")
-            st.info(f"🎯 Strikes: {', '.join(strikes)}")
+            # Get today's date
+            today = datetime.now(IST).date()
+            from_date = (today - timedelta(days=1)).strftime('%Y-%m-%d')
+            to_date = today.strftime('%Y-%m-%d')
             
-            # ============================================================
-            # STEP 1: FETCH SPOT PRICE
-            # ============================================================
-            st.info("**STEP 1: Fetching spot price...**")
+            payload = {
+                "exchangeSegment": "NSE_FNO",
+                "interval": "1",  # 1-minute data
+                "securityId": security_id,
+                "instrument": "OPTIDX",
+                "expiryFlag": expiry_flag,
+                "expiryCode": expiry_code,
+                "strike": strike_type,
+                "drvOptionType": option_type,
+                "requiredData": ["open", "high", "low", "close", "volume", "oi", "iv", "strike", "spot"],
+                "fromDate": from_date,
+                "toDate": to_date
+            }
             
-            spot_payload = {"exchangeSegment": "NSE_FNO", "securityId": security_id}
+            response = requests.post(
+                f"{self.base_url}/charts/rollingoption",
+                headers=self.headers,
+                json=payload,
+                timeout=30
+            )
             
-            with st.expander("🔍 View Spot Request Details", expanded=False):
-                st.json(spot_payload)
-                st.code(f"URL: {self.base_url}/marketfeed/quote", language="text")
-            
-            try:
-                spot_response = requests.post(
-                    f"{self.base_url}/marketfeed/quote",
-                    headers=self.headers,
-                    json=spot_payload,
-                    timeout=10
-                )
-                
-                st.info(f"📡 Response Status: {spot_response.status_code}")
-                
-                with st.expander("🔍 View Spot Response", expanded=False):
-                    st.json(spot_response.json())
-                
-                if spot_response.status_code != 200:
-                    st.error(f"❌ Spot API failed with status {spot_response.status_code}")
-                    st.error(f"Response: {spot_response.text}")
-                    return None, 0
-                
-                spot_data = spot_response.json()
-                spot_price = spot_data.get('data', {}).get('LTP', 0)
-                
-                if spot_price == 0:
-                    st.error("❌ Spot price is 0 or not found in response")
-                    st.error("Check 'data.LTP' field in response above")
-                    return None, 0
-                
-                st.success(f"✅ Spot Price: ₹{spot_price:,.2f}")
-                
-            except requests.exceptions.Timeout:
-                st.error("❌ Request timeout - Dhan API is slow/unresponsive")
-                return None, 0
-            except requests.exceptions.RequestException as e:
-                st.error(f"❌ Network error: {str(e)}")
-                return None, 0
-            except Exception as e:
-                st.error(f"❌ Unexpected error fetching spot: {str(e)}")
-                st.error(traceback.format_exc())
-                return None, 0
-            
-            # ============================================================
-            # STEP 2: FETCH OPTION CHAIN
-            # ============================================================
-            st.info(f"**STEP 2: Fetching option chain for {len(strikes)} strikes...**")
-            
-            all_data = []
-            failed_strikes = []
-            
-            for idx, strike_type in enumerate(strikes):
-                st.info(f"⏳ [{idx+1}/{len(strikes)}] Processing strike: {strike_type}")
-                
-                # CALL Option
-                call_payload = {
-                    "exchangeSegment": "NSE_FNO",
-                    "securityId": security_id,
-                    "instrument": "OPTIDX",
-                    "expiryFlag": expiry_flag,
-                    "expiryCode": expiry_code,
-                    "strike": strike_type,
-                    "drvOptionType": "CALL"
-                }
-                
-                try:
-                    call_response = requests.post(
-                        f"{self.base_url}/optionchain",
-                        headers=self.headers,
-                        json=call_payload,
-                        timeout=10
-                    )
-                    
-                    if call_response.status_code != 200:
-                        st.warning(f"⚠️ CALL failed for {strike_type}: Status {call_response.status_code}")
-                        with st.expander(f"🔍 View CALL Response for {strike_type}", expanded=False):
-                            st.json(call_response.json())
-                        failed_strikes.append(f"{strike_type}-CALL")
-                        time.sleep(0.5)
-                        continue
-                    
-                    call_data = call_response.json().get('data', {})
-                    
-                    if not call_data:
-                        st.warning(f"⚠️ Empty CALL data for {strike_type}")
-                        failed_strikes.append(f"{strike_type}-CALL")
-                        time.sleep(0.5)
-                        continue
-                    
-                except Exception as e:
-                    st.error(f"❌ Exception fetching CALL {strike_type}: {str(e)}")
-                    failed_strikes.append(f"{strike_type}-CALL")
-                    time.sleep(0.5)
-                    continue
-                
-                # PUT Option
-                put_payload = call_payload.copy()
-                put_payload["drvOptionType"] = "PUT"
-                
-                try:
-                    put_response = requests.post(
-                        f"{self.base_url}/optionchain",
-                        headers=self.headers,
-                        json=put_payload,
-                        timeout=10
-                    )
-                    
-                    if put_response.status_code != 200:
-                        st.warning(f"⚠️ PUT failed for {strike_type}: Status {put_response.status_code}")
-                        failed_strikes.append(f"{strike_type}-PUT")
-                        time.sleep(0.5)
-                        continue
-                    
-                    put_data = put_response.json().get('data', {})
-                    
-                    if not put_data:
-                        st.warning(f"⚠️ Empty PUT data for {strike_type}")
-                        failed_strikes.append(f"{strike_type}-PUT")
-                        time.sleep(0.5)
-                        continue
-                    
-                except Exception as e:
-                    st.error(f"❌ Exception fetching PUT {strike_type}: {str(e)}")
-                    failed_strikes.append(f"{strike_type}-PUT")
-                    time.sleep(0.5)
-                    continue
-                
-                # Extract data
-                strike_price = call_data.get('strike', 0)
-                
-                if strike_price == 0:
-                    st.warning(f"⚠️ Invalid strike price for {strike_type}")
-                    failed_strikes.append(strike_type)
-                    time.sleep(0.5)
-                    continue
-                
-                all_data.append({
-                    'strike': strike_price,
-                    'strike_type': strike_type,
-                    'call_oi': call_data.get('openInterest', 0),
-                    'put_oi': put_data.get('openInterest', 0),
-                    'call_volume': call_data.get('volume', 0),
-                    'put_volume': put_data.get('volume', 0),
-                    'call_iv': call_data.get('iv', 15),
-                    'put_iv': put_data.get('iv', 15),
-                    'spot_price': spot_price
-                })
-                
-                st.success(f"✅ {strike_type}: Strike ₹{strike_price:,.0f} | OI C:{call_data.get('openInterest', 0):,} P:{put_data.get('openInterest', 0):,}")
-                
-                time.sleep(0.5)  # Rate limiting
-            
-            # Summary
-            st.success(f"✅ **Successfully fetched {len(all_data)}/{len(strikes)} strikes**")
-            
-            if failed_strikes:
-                st.warning(f"⚠️ **Failed strikes:** {', '.join(failed_strikes)}")
-            
-            if len(all_data) == 0:
-                st.error("❌ **No data collected from any strike!**")
-                st.error("**Possible reasons:**")
-                st.error("1. Selected strikes don't exist for this expiry")
-                st.error("2. Wrong expiry type (Weekly vs Monthly)")
-                st.error("3. API format changed")
-                st.error("**Try:** Different strikes or expiry selection")
-                return None, spot_price
-            
-            return all_data, spot_price
+            if response.status_code == 200:
+                return response.json().get('data', {})
+            return None
             
         except Exception as e:
-            st.error(f"❌ **Critical Error in fetch_live_option_chain:**")
-            st.error(str(e))
-            st.error(traceback.format_exc())
-            return None, 0
+            st.error(f"Rolling API Error: {str(e)}")
+            return None
     
     def process_live_data(self, symbol: str, strikes: List[str], 
                          expiry_code: int = 1, expiry_flag: str = "WEEK"):
+        """Process LIVE data using rolling API"""
         config = SYMBOL_CONFIG.get(symbol, SYMBOL_CONFIG["NIFTY"])
         contract_size = config["contract_size"]
         
-        st.info("🚀 **Starting data fetch process...**")
+        st.info(f"🔍 Fetching LIVE data for {symbol}...")
         
-        raw_data, spot_price = self.fetch_live_option_chain(symbol, strikes, expiry_code, expiry_flag)
+        all_data = []
+        progress_bar = st.progress(0)
+        status_text = st.empty()
         
-        if raw_data is None or spot_price == 0:
-            st.error("❌ **Data fetch failed - see details above**")
-            return None, None
+        total_steps = len(strikes) * 2
+        current_step = 0
         
-        if len(raw_data) == 0:
-            st.error("❌ **No valid data to process**")
-            return None, None
+        # Track spot price across all fetches
+        spot_prices = []
         
-        st.info(f"⚙️ **Processing {len(raw_data)} records...**")
-        
-        current_time = datetime.now(IST)
-        processed_data = []
-        
-        for row in raw_data:
-            strike_price = row['strike']
-            call_oi = row['call_oi']
-            put_oi = row['put_oi']
-            call_volume = row['call_volume']
-            put_volume = row['put_volume']
-            call_iv = row['call_iv']
-            put_iv = row['put_iv']
+        for strike_type in strikes:
+            status_text.text(f"📡 Fetching {strike_type}...")
             
+            # Fetch CALL
+            call_data = self.fetch_rolling_option_current(
+                symbol, strike_type, "CALL", expiry_code, expiry_flag
+            )
+            current_step += 1
+            progress_bar.progress(current_step / total_steps)
+            
+            # Fetch PUT
+            put_data = self.fetch_rolling_option_current(
+                symbol, strike_type, "PUT", expiry_code, expiry_flag
+            )
+            current_step += 1
+            progress_bar.progress(current_step / total_steps)
+            
+            if not call_data or not put_data:
+                st.warning(f"⚠️ No data for {strike_type}")
+                time.sleep(0.5)
+                continue
+            
+            ce_data = call_data.get('ce', {})
+            pe_data = put_data.get('pe', {})
+            
+            if not ce_data:
+                st.warning(f"⚠️ Empty CE data for {strike_type}")
+                continue
+            
+            # Get timestamps and take LAST (most recent)
+            timestamps = ce_data.get('timestamp', [])
+            if not timestamps:
+                continue
+            
+            # Use LAST timestamp (most recent)
+            idx = -1
+            ts = timestamps[idx]
+            
+            dt_utc = datetime.fromtimestamp(ts, tz=pytz.UTC)
+            dt_ist = dt_utc.astimezone(IST)
+            
+            # Get spot price
+            spot_price = ce_data.get('spot', [0])[idx] if idx < len(ce_data.get('spot', [])) else 0
+            strike_price = ce_data.get('strike', [0])[idx] if idx < len(ce_data.get('strike', [])) else 0
+            
+            if spot_price > 0:
+                spot_prices.append(spot_price)
+            
+            if spot_price == 0 or strike_price == 0:
+                st.warning(f"⚠️ Zero values for {strike_type}")
+                continue
+            
+            # Get OI and other data
+            call_oi = ce_data.get('oi', [0])[idx] if idx < len(ce_data.get('oi', [])) else 0
+            put_oi = pe_data.get('oi', [0])[idx] if idx < len(pe_data.get('oi', [])) else 0
+            call_volume = ce_data.get('volume', [0])[idx] if idx < len(ce_data.get('volume', [])) else 0
+            put_volume = pe_data.get('volume', [0])[idx] if idx < len(pe_data.get('volume', [])) else 0
+            call_iv = ce_data.get('iv', [15])[idx] if idx < len(ce_data.get('iv', [])) else 15
+            put_iv = pe_data.get('iv', [15])[idx] if idx < len(pe_data.get('iv', [])) else 15
+            
+            # Calculate Greeks
             time_to_expiry = 7 / 365
             call_iv_dec = call_iv / 100 if call_iv > 1 else call_iv
             put_iv_dec = put_iv / 100 if put_iv > 1 else put_iv
             
-            # Calculate Greeks
             call_gamma = self.bs_calc.calculate_gamma(spot_price, strike_price, time_to_expiry, self.risk_free_rate, call_iv_dec)
             put_gamma = self.bs_calc.calculate_gamma(spot_price, strike_price, time_to_expiry, self.risk_free_rate, put_iv_dec)
             call_delta = self.bs_calc.calculate_call_delta(spot_price, strike_price, time_to_expiry, self.risk_free_rate, call_iv_dec)
@@ -607,12 +474,12 @@ class DhanLiveFetcher:
             call_charm_exp = (call_oi * call_charm * spot_price * contract_size) / 1e9
             put_charm_exp = (put_oi * put_charm * spot_price * contract_size) / 1e9
             
-            processed_data.append({
-                'timestamp': current_time,
-                'time': current_time.strftime('%H:%M:%S IST'),
+            all_data.append({
+                'timestamp': dt_ist,
+                'time': dt_ist.strftime('%H:%M:%S IST'),
                 'spot_price': spot_price,
                 'strike': strike_price,
-                'strike_type': row['strike_type'],
+                'strike_type': strike_type,
                 'call_oi': call_oi,
                 'put_oi': put_oi,
                 'call_volume': call_volume,
@@ -633,24 +500,36 @@ class DhanLiveFetcher:
                 'put_charm': put_charm_exp,
                 'net_charm': call_charm_exp + put_charm_exp,
             })
+            
+            st.success(f"✅ {strike_type}: ₹{strike_price:,.0f} | OI C:{call_oi:,} P:{put_oi:,}")
+            time.sleep(0.5)
         
-        df = pd.DataFrame(processed_data)
+        progress_bar.empty()
+        status_text.empty()
+        
+        if not all_data:
+            return None, None
+        
+        df = pd.DataFrame(all_data)
         
         # Calculate hedging pressure
         max_gex = df['net_gex'].abs().max()
         df['hedging_pressure'] = (df['net_gex'] / max_gex * 100) if max_gex > 0 else 0
         
+        # Use median spot price for stability
+        final_spot = np.median(spot_prices) if spot_prices else df['spot_price'].median()
+        
         meta = {
             'symbol': symbol,
-            'spot_price': spot_price,
-            'time': current_time.strftime('%H:%M:%S IST'),
+            'spot_price': final_spot,
+            'time': df['time'].iloc[-1],
             'total_records': len(df),
             'strikes_count': df['strike'].nunique(),
             'expiry_code': expiry_code,
             'expiry_flag': expiry_flag
         }
         
-        st.success(f"✅ **Processing complete! {len(df)} records ready**")
+        st.success(f"✅ Successfully fetched {len(df)} records | Spot: ₹{final_spot:,.2f}")
         
         return df, meta
 
@@ -760,16 +639,15 @@ def fig_to_image_bytes(fig: go.Figure) -> bytes:
     return img_bytes
 
 # ============================================================================
-# TELEGRAM AUTO-UPDATE FUNCTION
+# TELEGRAM AUTO-UPDATE
 # ============================================================================
 
 def send_telegram_update(df: pd.DataFrame, meta: Dict) -> bool:
-    """Send GEX chart and summary to Telegram"""
+    """Send GEX chart to Telegram"""
     try:
         telegram = TelegramSender(TELEGRAM_CONFIG.bot_token, TELEGRAM_CONFIG.chat_id)
         spot_price = meta['spot_price']
         
-        # Calculate metrics
         strike_interval = SYMBOL_CONFIG[meta['symbol']]["strike_interval"]
         strike_range = 3 * strike_interval
         df_calc = df[(df['strike'] >= spot_price - strike_range) & 
@@ -784,7 +662,6 @@ def send_telegram_update(df: pd.DataFrame, meta: Dict) -> bool:
         
         flip_zones = identify_gamma_flip_zones(df, spot_price)
         
-        # Create caption
         caption = f"""
 <b>🔴 NYZTrade LIVE Update</b>
 
@@ -806,19 +683,13 @@ def send_telegram_update(df: pd.DataFrame, meta: Dict) -> bool:
         
         caption += f"\n⏰ Next update in 5 minutes"
         
-        # Create chart
         fig = create_gex_chart(df, spot_price, for_telegram=True)
-        
-        # Convert to image
         img_bytes = fig_to_image_bytes(fig)
         
-        # Send to Telegram
-        success = telegram.send_photo(img_bytes, caption)
-        
-        return success
+        return telegram.send_photo(img_bytes, caption)
         
     except Exception as e:
-        st.error(f"Telegram update error: {str(e)}")
+        st.error(f"Telegram error: {str(e)}")
         return False
 
 # ============================================================================
@@ -838,9 +709,9 @@ def main():
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <h1 style="font-family: 'Space Grotesk', sans-serif; font-size: 2rem; margin: 0; background: linear-gradient(135deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
-                📊 NYZTrade LIVE + Telegram</h1>
+                📊 NYZTrade LIVE GEX/DEX</h1>
                 <p style="font-family: 'JetBrains Mono', monospace; color: #94a3b8; font-size: 0.9rem; margin-top: 8px;">
-                Real-Time GEX/DEX | Auto Telegram Updates Every 5 Min | Gamma Flip Zones</p>
+                Real-Time Options Greeks | Telegram Auto-Updates | Gamma Flip Zones</p>
             </div>
             <div style="display: flex; gap: 10px; align-items: center;">
                 <div class="live-indicator">
@@ -893,13 +764,12 @@ def main():
         telegram_enabled = st.checkbox(
             "Enable Auto-Updates", 
             value=st.session_state.telegram_enabled,
-            help="Send GEX chart every 5 minutes to Telegram"
+            help="Send GEX chart every 5 minutes"
         )
         
         if telegram_enabled:
             st.success("✅ Telegram Configured")
             
-            # Show masked credentials
             token_masked = f"{TELEGRAM_CONFIG.bot_token[:15]}...{TELEGRAM_CONFIG.bot_token[-8:]}"
             st.caption(f"🤖 Bot: {token_masked}")
             st.caption(f"💬 Chat: {TELEGRAM_CONFIG.chat_id}")
@@ -908,19 +778,17 @@ def main():
                 last_update = st.session_state.last_telegram_update
                 st.caption(f"📤 Last: {last_update.strftime('%H:%M:%S')}")
             
-            # Test button
             if st.button("🧪 Test Connection", use_container_width=True):
                 telegram = TelegramSender(TELEGRAM_CONFIG.bot_token, TELEGRAM_CONFIG.chat_id)
                 if telegram.test_connection():
-                    if telegram.send_message("✅ <b>Test Successful!</b>\n\nNYZTrade bot is working perfectly!"):
+                    if telegram.send_message("✅ <b>Test Successful!</b>\n\nNYZTrade bot working!"):
                         st.success("✅ Message sent!")
                     else:
                         st.error("❌ Failed to send. Check chat ID.")
                 else:
                     st.error("❌ Invalid bot token")
         else:
-            st.info("📱 Telegram updates disabled")
-            st.caption("Enable checkbox above to activate")
+            st.info("📱 Telegram disabled")
         
         st.session_state.telegram_enabled = telegram_enabled
         
@@ -950,13 +818,12 @@ def main():
             st.session_state.fetched = False
             st.rerun()
     
-    # Telegram auto-update check (every 5 minutes = 300 seconds)
+    # Telegram auto-update
     if st.session_state.telegram_enabled and TELEGRAM_CONFIG.enabled:
         if st.session_state.get('fetched', False) and 'df' in st.session_state:
             last_update = st.session_state.last_telegram_update
             
             if last_update is None or (datetime.now() - last_update).total_seconds() >= 300:
-                # Send update
                 df = st.session_state.df
                 meta = st.session_state.meta
                 
@@ -984,7 +851,7 @@ def main():
                     df, meta = fetcher.process_live_data(symbol, strikes, expiry_code, expiry_flag)
                     
                     if df is None or len(df) == 0:
-                        st.error("❌ Failed to fetch data - see debug details above")
+                        st.error("❌ No data. Check market hours or API.")
                         return
                     
                     st.session_state.df = df
@@ -993,8 +860,7 @@ def main():
                     st.session_state.last_refresh = datetime.now()
                     st.rerun()
                 except Exception as e:
-                    st.error(f"❌ Critical Error: {str(e)}")
-                    st.error(traceback.format_exc())
+                    st.error(f"❌ Error: {str(e)}")
                     return
         
         # Display data
@@ -1091,7 +957,7 @@ def main():
                 st.info("📱 First Telegram update on next refresh")
         
         # Charts
-        tabs = st.tabs(["🎯 GEX", "📊 DEX", "⚡ Combined", "📋 Open Interest", "📥 Data"])
+        tabs = st.tabs(["🎯 GEX", "📊 DEX", "⚡ Combined", "📋 OI", "📥 Data"])
         
         with tabs[0]:
             st.plotly_chart(create_gex_chart(df, spot_price), use_container_width=True)
@@ -1126,27 +992,33 @@ def main():
     
     else:
         st.info("""
-        👋 **Welcome to NYZTrade LIVE + Telegram!**
+        👋 **Welcome to NYZTrade LIVE GEX/DEX!**
         
         **Features:**
+        - 🔴 Real-time market data using Rolling API (more reliable)
         - 📱 Auto-send GEX chart every 5 minutes to Telegram
-        - 📊 Real-time GEX, DEX, Combined analysis
-        - 🔄 Gamma flip zones detection
+        - 📊 GEX, DEX, Combined analysis
+        - 🔄 Gamma flip zones
         - ⚡ Auto-refresh capability
-        - 📈 Full debugging mode
         
         **How to use:**
         1. Configure settings in sidebar
-        2. Click "Fetch LIVE Data"
-        3. See detailed debug logs
-        4. Charts will display if successful
+        2. Enable Telegram (optional)
+        3. Click "Fetch LIVE Data"
+        4. Charts display with latest data
+        
+        **Telegram Setup:**
+        1. Edit lines 139-141 in code with your bot token & chat ID
+        2. Get token from @BotFather
+        3. Get chat ID using /getUpdates method
+        4. Deploy and enable checkbox
         """)
     
     # Footer
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; padding: 20px; color: #64748b; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;">
-    NYZTrade LIVE + Telegram | Debug Mode ON | ⚠️ Educational purposes only
+    NYZTrade LIVE | Rolling API (Reliable) | Auto Telegram | ⚠️ Educational only
     </div>
     """, unsafe_allow_html=True)
 
