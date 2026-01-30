@@ -1,6 +1,6 @@
 # ============================================================================
-# NYZTrade LIVE GEX/DEX Dashboard - FIXED VERSION
-# Telegram Auto-Updates + Proper Error Handling
+# NYZTrade LIVE GEX/DEX Dashboard - FULL ENHANCED VERSION
+# Countdown Timer + Hedge Pressure + VANNA + CHARM + GEX Overlay
 # ============================================================================
 
 import streamlit as st
@@ -23,7 +23,7 @@ warnings.filterwarnings('ignore')
 # ============================================================================
 
 st.set_page_config(
-    page_title="NYZTrade LIVE GEX/DEX",
+    page_title="NYZTrade LIVE Enhanced",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -125,6 +125,23 @@ st.markdown("""
         background: rgba(34, 139, 230, 0.1);
         border: 1px solid rgba(34, 139, 230, 0.3);
         border-radius: 20px;
+    }
+    
+    .countdown-box {
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(251, 191, 36, 0.1));
+        border: 2px solid rgba(245, 158, 11, 0.4);
+        border-radius: 12px;
+        padding: 16px;
+        text-align: center;
+        margin: 16px 0;
+    }
+    
+    .countdown-timer {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #f59e0b;
+        letter-spacing: 0.1em;
     }
     
     @keyframes pulse {
@@ -317,7 +334,7 @@ def identify_gamma_flip_zones(df: pd.DataFrame, spot_price: float) -> List[Dict]
     return flip_zones
 
 # ============================================================================
-# DHAN LIVE FETCHER - USING ROLLING API (MORE RELIABLE)
+# DHAN LIVE FETCHER
 # ============================================================================
 
 class DhanLiveFetcher:
@@ -334,18 +351,17 @@ class DhanLiveFetcher:
     
     def fetch_rolling_option_current(self, symbol: str, strike_type: str, option_type: str,
                                      expiry_code: int = 1, expiry_flag: str = "WEEK"):
-        """Fetch current/recent data using rolling API - MORE RELIABLE"""
+        """Fetch current data using rolling API"""
         try:
             security_id = DHAN_SECURITY_IDS.get(symbol, 13)
             
-            # Get today's date
             today = datetime.now(IST).date()
             from_date = (today - timedelta(days=1)).strftime('%Y-%m-%d')
             to_date = today.strftime('%Y-%m-%d')
             
             payload = {
                 "exchangeSegment": "NSE_FNO",
-                "interval": "1",  # 1-minute data
+                "interval": "1",
                 "securityId": security_id,
                 "instrument": "OPTIDX",
                 "expiryFlag": expiry_flag,
@@ -369,12 +385,12 @@ class DhanLiveFetcher:
             return None
             
         except Exception as e:
-            st.error(f"Rolling API Error: {str(e)}")
+            st.error(f"API Error: {str(e)}")
             return None
     
     def process_live_data(self, symbol: str, strikes: List[str], 
                          expiry_code: int = 1, expiry_flag: str = "WEEK"):
-        """Process LIVE data using rolling API"""
+        """Process LIVE data"""
         config = SYMBOL_CONFIG.get(symbol, SYMBOL_CONFIG["NIFTY"])
         contract_size = config["contract_size"]
         
@@ -387,7 +403,6 @@ class DhanLiveFetcher:
         total_steps = len(strikes) * 2
         current_step = 0
         
-        # Track spot price across all fetches
         spot_prices = []
         
         for strike_type in strikes:
@@ -419,19 +434,17 @@ class DhanLiveFetcher:
                 st.warning(f"⚠️ Empty CE data for {strike_type}")
                 continue
             
-            # Get timestamps and take LAST (most recent)
             timestamps = ce_data.get('timestamp', [])
             if not timestamps:
                 continue
             
-            # Use LAST timestamp (most recent)
+            # Use LAST timestamp
             idx = -1
             ts = timestamps[idx]
             
             dt_utc = datetime.fromtimestamp(ts, tz=pytz.UTC)
             dt_ist = dt_utc.astimezone(IST)
             
-            # Get spot price
             spot_price = ce_data.get('spot', [0])[idx] if idx < len(ce_data.get('spot', [])) else 0
             strike_price = ce_data.get('strike', [0])[idx] if idx < len(ce_data.get('strike', [])) else 0
             
@@ -442,7 +455,6 @@ class DhanLiveFetcher:
                 st.warning(f"⚠️ Zero values for {strike_type}")
                 continue
             
-            # Get OI and other data
             call_oi = ce_data.get('oi', [0])[idx] if idx < len(ce_data.get('oi', [])) else 0
             put_oi = pe_data.get('oi', [0])[idx] if idx < len(pe_data.get('oi', [])) else 0
             call_volume = ce_data.get('volume', [0])[idx] if idx < len(ce_data.get('volume', [])) else 0
@@ -516,7 +528,6 @@ class DhanLiveFetcher:
         max_gex = df['net_gex'].abs().max()
         df['hedging_pressure'] = (df['net_gex'] / max_gex * 100) if max_gex > 0 else 0
         
-        # Use median spot price for stability
         final_spot = np.median(spot_prices) if spot_prices else df['spot_price'].median()
         
         meta = {
@@ -609,6 +620,245 @@ def create_combined_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
     )
     return fig
 
+def create_hedging_pressure_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
+    """Hedging pressure chart with Flip Zones"""
+    df_sorted = df.sort_values('strike').reset_index(drop=True)
+    flip_zones = identify_gamma_flip_zones(df_sorted, spot_price)
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['hedging_pressure'],
+        orientation='h',
+        marker=dict(
+            color=df_sorted['hedging_pressure'],
+            colorscale='RdYlGn',
+            showscale=True,
+            colorbar=dict(
+                title=dict(text='Pressure %', font=dict(color='white', size=12)),
+                tickfont=dict(color='white'),
+                x=1.02,
+                len=0.7,
+                thickness=20
+            ),
+            cmin=-100,
+            cmax=100
+        ),
+        hovertemplate='Strike: %{y:,.0f}<br>Pressure: %{x:.1f}%<extra></extra>',
+        showlegend=False
+    ))
+    
+    fig.add_hline(y=spot_price, line_dash="dash", line_color="#06b6d4", line_width=3,
+                  annotation_text=f"Spot: {spot_price:,.2f}", annotation_position="top right")
+    
+    fig.add_vline(x=0, line_dash="dot", line_color="gray", line_width=1)
+    
+    for zone in flip_zones:
+        fig.add_hline(y=zone['strike'], line_dash="dot", line_color=zone['color'], line_width=2,
+                      annotation_text=f"🔄 {zone['arrow']} {zone['strike']:,.0f}", annotation_position="left")
+        fig.add_hrect(y0=zone['lower_strike'], y1=zone['upper_strike'], 
+                      fillcolor=zone['color'], opacity=0.1, line_width=0)
+    
+    fig.update_layout(
+        title=dict(text="<b>🎪 Hedging Pressure with Flip Zones</b>", font=dict(size=18, color='white')),
+        xaxis_title="Hedging Pressure (%)",
+        yaxis_title="Strike Price",
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(26,35,50,0.8)',
+        height=700,
+        showlegend=False,
+        hovermode='closest',
+        xaxis=dict(
+            gridcolor='rgba(128,128,128,0.2)', 
+            showgrid=True,
+            zeroline=True,
+            zerolinecolor='rgba(128,128,128,0.5)',
+            zerolinewidth=2,
+            range=[-110, 110]
+        ),
+        yaxis=dict(gridcolor='rgba(128,128,128,0.2)', showgrid=True, autorange=True),
+        margin=dict(l=80, r=120, t=80, b=80)
+    )
+    return fig
+
+def create_gex_overlay_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
+    """GEX Overlay - for live data this shows current GEX only (no OI changes without history)"""
+    df_sorted = df.sort_values('strike').reset_index(drop=True)
+    
+    colors = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['net_gex']]
+    flip_zones = identify_gamma_flip_zones(df_sorted, spot_price)
+    
+    fig = go.Figure()
+    
+    # Current GEX
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['net_gex'],
+        orientation='h',
+        marker=dict(color=colors, opacity=0.7),
+        name='Current GEX',
+        hovertemplate='Strike: %{y:,.0f}<br>GEX: %{x:.4f}B<extra></extra>'
+    ))
+    
+    fig.add_hline(y=spot_price, line_dash="dash", line_color="white", line_width=3,
+                  annotation_text=f"Spot: {spot_price:,.2f}", annotation_position="top right")
+    
+    fig.add_vline(x=0, line_dash="dot", line_color="gray", line_width=2)
+    
+    for zone in flip_zones:
+        fig.add_hline(y=zone['strike'], line_dash="dot", line_color=zone['color'], 
+                      line_width=1, opacity=0.5)
+    
+    fig.update_layout(
+        title=dict(
+            text="<b>🔄 Current GEX Snapshot</b><br><sub>OI-based overlay requires historical data (use Historical dashboard)</sub>",
+            font=dict(size=18, color='white')
+        ),
+        xaxis_title="GEX (₹ Billions)",
+        yaxis_title="Strike Price",
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(26,35,50,0.8)',
+        height=700,
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=1.02,
+            xanchor='right',
+            x=1,
+            font=dict(color='white', size=11),
+            bgcolor='rgba(0,0,0,0.8)',
+            bordercolor='white',
+            borderwidth=1
+        ),
+        hovermode='closest',
+        xaxis=dict(gridcolor='rgba(128,128,128,0.2)', showgrid=True, zeroline=True, 
+                   zerolinecolor='rgba(255,255,255,0.3)', zerolinewidth=2),
+        yaxis=dict(gridcolor='rgba(128,128,128,0.2)', showgrid=True, autorange=True),
+        margin=dict(l=80, r=80, t=100, b=80)
+    )
+    
+    # Add info note
+    fig.add_annotation(
+        xref="paper", yref="paper",
+        x=0.5, y=0.5,
+        text="ℹ️ Live Mode: Single Snapshot<br>For OI-based GEX comparison, use Historical Dashboard",
+        showarrow=False,
+        bgcolor="rgba(59,130,246,0.2)",
+        bordercolor="#3b82f6",
+        borderwidth=2,
+        font=dict(color="white", size=12),
+        align="center"
+    )
+    
+    return fig
+
+def create_vanna_exposure_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
+    """VANNA Exposure chart"""
+    df_sorted = df.sort_values('strike').reset_index(drop=True)
+    
+    colors_call = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['call_vanna']]
+    colors_put = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['put_vanna']]
+    
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=("📈 Call VANNA", "📉 Put VANNA"),
+        horizontal_spacing=0.12
+    )
+    
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['call_vanna'],
+        orientation='h',
+        marker=dict(color=colors_call),
+        name='Call VANNA',
+        hovertemplate='Strike: %{y:,.0f}<br>Call VANNA: %{x:.4f}B<extra></extra>'
+    ), row=1, col=1)
+    
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['put_vanna'],
+        orientation='h',
+        marker=dict(color=colors_put),
+        name='Put VANNA',
+        hovertemplate='Strike: %{y:,.0f}<br>Put VANNA: %{x:.4f}B<extra></extra>'
+    ), row=1, col=2)
+    
+    for col in [1, 2]:
+        fig.add_hline(y=spot_price, line_dash="dash", line_color="#06b6d4", line_width=2,
+                      annotation_text=f"Spot: {spot_price:,.2f}", annotation_position="top right",
+                      row=1, col=col)
+    
+    fig.update_layout(
+        title=dict(text="<b>🌊 VANNA Exposure (dDelta/dVol)</b>", font=dict(size=18, color='white')),
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(26,35,50,0.8)',
+        height=600,
+        showlegend=False,
+        hovermode='closest',
+        margin=dict(l=80, r=80, t=100, b=80)
+    )
+    
+    fig.update_xaxes(title_text="VANNA (₹ Billions)", gridcolor='rgba(128,128,128,0.2)', showgrid=True)
+    fig.update_yaxes(title_text="Strike Price", gridcolor='rgba(128,128,128,0.2)', showgrid=True)
+    
+    return fig
+
+def create_charm_exposure_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
+    """CHARM Exposure chart"""
+    df_sorted = df.sort_values('strike').reset_index(drop=True)
+    
+    colors_call = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['call_charm']]
+    colors_put = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['put_charm']]
+    
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=("📈 Call CHARM", "📉 Put CHARM"),
+        horizontal_spacing=0.12
+    )
+    
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['call_charm'],
+        orientation='h',
+        marker=dict(color=colors_call),
+        name='Call CHARM',
+        hovertemplate='Strike: %{y:,.0f}<br>Call CHARM: %{x:.4f}B<extra></extra>'
+    ), row=1, col=1)
+    
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['put_charm'],
+        orientation='h',
+        marker=dict(color=colors_put),
+        name='Put CHARM',
+        hovertemplate='Strike: %{y:,.0f}<br>Put CHARM: %{x:.4f}B<extra></extra>'
+    ), row=1, col=2)
+    
+    for col in [1, 2]:
+        fig.add_hline(y=spot_price, line_dash="dash", line_color="#06b6d4", line_width=2,
+                      annotation_text=f"Spot: {spot_price:,.2f}", annotation_position="top right",
+                      row=1, col=col)
+    
+    fig.update_layout(
+        title=dict(text="<b>⏰ CHARM Exposure (Delta Decay)</b>", font=dict(size=18, color='white')),
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(26,35,50,0.8)',
+        height=600,
+        showlegend=False,
+        hovermode='closest',
+        margin=dict(l=80, r=80, t=100, b=80)
+    )
+    
+    fig.update_xaxes(title_text="CHARM (₹ Billions)", gridcolor='rgba(128,128,128,0.2)', showgrid=True)
+    fig.update_yaxes(title_text="Strike Price", gridcolor='rgba(128,128,128,0.2)', showgrid=True)
+    
+    return fig
+
 def create_oi_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     
@@ -693,6 +943,37 @@ def send_telegram_update(df: pd.DataFrame, meta: Dict) -> bool:
         return False
 
 # ============================================================================
+# COUNTDOWN TIMER COMPONENT
+# ============================================================================
+
+def display_countdown_timer(target_time: datetime, refresh_interval: int):
+    """Display countdown timer until next refresh"""
+    now = datetime.now()
+    seconds_remaining = int((target_time - now).total_seconds())
+    
+    if seconds_remaining < 0:
+        seconds_remaining = 0
+    
+    minutes = seconds_remaining // 60
+    seconds = seconds_remaining % 60
+    
+    # Calculate progress
+    progress = 1 - (seconds_remaining / refresh_interval)
+    progress = max(0, min(1, progress))
+    
+    st.markdown(f"""
+    <div class="countdown-box">
+        <div style="font-size: 0.9rem; color: #94a3b8; margin-bottom: 8px;">⏱️ AUTO-REFRESH COUNTDOWN</div>
+        <div class="countdown-timer">{minutes:02d}:{seconds:02d}</div>
+        <div style="font-size: 0.85rem; color: #64748b; margin-top: 8px;">Next refresh in {seconds_remaining} seconds</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.progress(progress)
+    
+    return seconds_remaining
+
+# ============================================================================
 # MAIN APP
 # ============================================================================
 
@@ -702,6 +983,8 @@ def main():
         st.session_state.telegram_enabled = TELEGRAM_CONFIG.enabled
     if 'last_telegram_update' not in st.session_state:
         st.session_state.last_telegram_update = None
+    if 'last_refresh' not in st.session_state:
+        st.session_state.last_refresh = datetime.now()
     
     # Header
     st.markdown("""
@@ -709,9 +992,9 @@ def main():
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <h1 style="font-family: 'Space Grotesk', sans-serif; font-size: 2rem; margin: 0; background: linear-gradient(135deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
-                📊 NYZTrade LIVE GEX/DEX</h1>
+                📊 NYZTrade LIVE Enhanced</h1>
                 <p style="font-family: 'JetBrains Mono', monospace; color: #94a3b8; font-size: 0.9rem; margin-top: 8px;">
-                Real-Time Options Greeks | Telegram Auto-Updates | Gamma Flip Zones</p>
+                Real-Time Options Greeks | Hedge Pressure | VANNA & CHARM | Telegram Auto-Updates</p>
             </div>
             <div style="display: flex; gap: 10px; align-items: center;">
                 <div class="live-indicator">
@@ -795,7 +1078,7 @@ def main():
         st.markdown("---")
         auto_refresh = st.checkbox("🔄 Auto-Refresh", value=False)
         if auto_refresh:
-            refresh_interval = st.slider("Interval (sec)", 10, 300, 60)
+            refresh_interval = st.slider("Interval (sec)", 30, 300, 60)
         
         st.markdown("---")
         ist_now = datetime.now(IST)
@@ -811,12 +1094,20 @@ def main():
             'expiry_code': expiry_code, 'expiry_flag': expiry_flag
         }
         st.session_state.fetched = False
+        st.session_state.last_refresh = datetime.now()
     
-    # Auto-refresh
-    if auto_refresh and 'last_refresh' in st.session_state:
-        if (datetime.now() - st.session_state.last_refresh).total_seconds() >= refresh_interval:
+    # Auto-refresh with countdown
+    if auto_refresh and st.session_state.get('fetched', False):
+        next_refresh_time = st.session_state.last_refresh + timedelta(seconds=refresh_interval)
+        seconds_remaining = display_countdown_timer(next_refresh_time, refresh_interval)
+        
+        if seconds_remaining <= 0:
             st.session_state.fetched = False
             st.rerun()
+        
+        # Auto-rerun every second to update countdown
+        time.sleep(1)
+        st.rerun()
     
     # Telegram auto-update
     if st.session_state.telegram_enabled and TELEGRAM_CONFIG.enabled:
@@ -957,7 +1248,8 @@ def main():
                 st.info("📱 First Telegram update on next refresh")
         
         # Charts
-        tabs = st.tabs(["🎯 GEX", "📊 DEX", "⚡ Combined", "📋 OI", "📥 Data"])
+        tabs = st.tabs(["🎯 GEX", "📊 DEX", "⚡ Combined", "🎪 Hedge Pressure", 
+                        "🔄 GEX Overlay", "🌊 VANNA", "⏰ CHARM", "📋 OI", "📥 Data"])
         
         with tabs[0]:
             st.plotly_chart(create_gex_chart(df, spot_price), use_container_width=True)
@@ -973,13 +1265,77 @@ def main():
             st.plotly_chart(create_combined_chart(df, spot_price), use_container_width=True)
         
         with tabs[3]:
-            st.plotly_chart(create_oi_chart(df, spot_price), use_container_width=True)
+            st.markdown("### 🎪 Hedging Pressure Analysis")
+            st.markdown("""
+            **Understanding Hedging Pressure:**
+            - Shows normalized GEX at each strike (-100% to +100%)
+            - **Positive (Green)**: Dealers need to sell on rallies (suppression)
+            - **Negative (Red)**: Dealers need to buy on rallies (amplification)
+            - **Flip zones** show critical dealer hedging transitions
+            """)
+            st.plotly_chart(create_hedging_pressure_chart(df, spot_price), use_container_width=True)
         
         with tabs[4]:
+            st.markdown("### 🔄 GEX Snapshot")
+            st.info("ℹ️ **Live Mode Limitation**: OI-based overlay requires historical time series data. Use the Historical Dashboard for full OI flow analysis.")
+            st.plotly_chart(create_gex_overlay_chart(df, spot_price), use_container_width=True)
+        
+        with tabs[5]:
+            st.markdown("### 🌊 VANNA Exposure (dDelta/dVol)")
+            st.markdown("""
+            **VANNA Interpretation:**
+            - Measures how delta changes with volatility
+            - **Positive VANNA**: Delta increases as IV increases
+            - **Important for**: Hedging in volatile markets
+            - **High VANNA strikes**: Sensitive to IV changes
+            """)
+            st.plotly_chart(create_vanna_exposure_chart(df, spot_price), use_container_width=True)
+            
+            total_call_vanna = df['call_vanna'].sum()
+            total_put_vanna = df['put_vanna'].sum()
+            net_vanna = df['net_vanna'].sum()
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Call VANNA", f"{total_call_vanna:.4f}B")
+            with col2:
+                st.metric("Total Put VANNA", f"{total_put_vanna:.4f}B")
+            with col3:
+                st.metric("Net VANNA", f"{net_vanna:.4f}B")
+        
+        with tabs[6]:
+            st.markdown("### ⏰ CHARM Exposure (Delta Decay)")
+            st.markdown("""
+            **CHARM Interpretation:**
+            - Measures delta decay over time
+            - **Shows**: How delta changes as expiration approaches
+            - **Critical for**: Understanding time decay effects
+            - **High CHARM strikes**: Delta will change significantly with time
+            """)
+            st.plotly_chart(create_charm_exposure_chart(df, spot_price), use_container_width=True)
+            
+            total_call_charm = df['call_charm'].sum()
+            total_put_charm = df['put_charm'].sum()
+            net_charm = df['net_charm'].sum()
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Call CHARM", f"{total_call_charm:.4f}B")
+            with col2:
+                st.metric("Total Put CHARM", f"{total_put_charm:.4f}B")
+            with col3:
+                st.metric("Net CHARM", f"{net_charm:.4f}B")
+        
+        with tabs[7]:
+            st.plotly_chart(create_oi_chart(df, spot_price), use_container_width=True)
+        
+        with tabs[8]:
             display_df = df[['strike', 'call_oi', 'put_oi', 'call_volume', 'put_volume', 
-                           'net_gex', 'net_dex']].copy()
+                           'net_gex', 'net_dex', 'net_vanna', 'net_charm']].copy()
             display_df['net_gex'] = display_df['net_gex'].apply(lambda x: f"{x:.4f}B")
             display_df['net_dex'] = display_df['net_dex'].apply(lambda x: f"{x:.4f}B")
+            display_df['net_vanna'] = display_df['net_vanna'].apply(lambda x: f"{x:.4f}B")
+            display_df['net_charm'] = display_df['net_charm'].apply(lambda x: f"{x:.4f}B")
             st.dataframe(display_df, use_container_width=True, hide_index=True)
             
             csv = df.to_csv(index=False)
@@ -992,10 +1348,17 @@ def main():
     
     else:
         st.info("""
-        👋 **Welcome to NYZTrade LIVE GEX/DEX!**
+        👋 **Welcome to NYZTrade LIVE Enhanced!**
         
-        **Features:**
-        - 🔴 Real-time market data using Rolling API (more reliable)
+        **🆕 New Features:**
+        - ⏱️ **Auto-Refresh Countdown Timer** - Visual countdown to next refresh
+        - 🎪 **Hedging Pressure Analysis** - Normalized GEX with flip zones
+        - 🔄 **GEX Overlay** - Current snapshot (full overlay in Historical)
+        - 🌊 **VANNA Exposure** - Delta sensitivity to volatility
+        - ⏰ **CHARM Exposure** - Delta decay over time
+        
+        **Original Features:**
+        - 🔴 Real-time market data
         - 📱 Auto-send GEX chart every 5 minutes to Telegram
         - 📊 GEX, DEX, Combined analysis
         - 🔄 Gamma flip zones
@@ -1003,22 +1366,23 @@ def main():
         
         **How to use:**
         1. Configure settings in sidebar
-        2. Enable Telegram (optional)
+        2. Enable Telegram & Auto-Refresh (optional)
         3. Click "Fetch LIVE Data"
-        4. Charts display with latest data
+        4. Watch countdown timer and charts update
+        5. Explore 9 comprehensive analysis tabs
         
-        **Telegram Setup:**
-        1. Edit lines 139-141 in code with your bot token & chat ID
-        2. Get token from @BotFather
-        3. Get chat ID using /getUpdates method
-        4. Deploy and enable checkbox
+        **Pro Tips:**
+        - Enable Auto-Refresh to see countdown timer
+        - VANNA/CHARM show advanced Greeks sensitivity
+        - Hedging Pressure reveals dealer positioning strength
+        - For OI flow analysis, use Historical Dashboard
         """)
     
     # Footer
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; padding: 20px; color: #64748b; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;">
-    NYZTrade LIVE | Rolling API (Reliable) | Auto Telegram | ⚠️ Educational only
+    NYZTrade LIVE Enhanced | Countdown Timer | Hedge Pressure | VANNA & CHARM | ⚠️ Educational only
     </div>
     """, unsafe_allow_html=True)
 
