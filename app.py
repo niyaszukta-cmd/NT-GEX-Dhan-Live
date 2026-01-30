@@ -145,7 +145,7 @@ st.markdown("""
 @dataclass
 class DhanConfig:
     client_id: str = "1100480354"
-    access_token: str =  "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY5NjgyOTczLCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2OTU5NjU3MywidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.tBOgIqwb48fvy5IXc7d9Ln9-Rwfft1z92CGOBmkFe2_JSoQ5R-uhiP5UEozD_GeD68EYeHAIom5PX7dBI89cYw"
+    access_token: str =  "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY5Nzc0MzIyLCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2OTY4NzkyMiwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.VuTq2uSDzTWelLiXUFIjf2xTfbytZeKvASQAUAWKk3jeXPy6xSo_-853lpUJPU8cdzmvQgkBs1pDNpgLxmkn-g"
 # ============================================================================
 # TELEGRAM CONFIGURATION - EDIT YOUR CREDENTIALS HERE
 # ============================================================================
