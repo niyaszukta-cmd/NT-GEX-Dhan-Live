@@ -223,7 +223,7 @@ st.markdown("""
 @dataclass
 class DhanConfig:
     client_id: str = "1100480354"
-    access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY5Nzc0MzIyLCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2OTY4NzkyMiwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.VuTq2uSDzTWelLiXUFIjf2xTfbytZeKvASQAUAWKk3jeXPy6xSo_-853lpUJPU8cdzmvQgkBs1pDNpgLxmkn-g"
+    access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY5OTc1MjA2LCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2OTg4ODgwNiwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.LF4-rlL4nxwwdyv4R1vWLTzW2AeJEssxoYA2r1dWtrApkDFnYH4vGmdHFPyFctwV7iVi56pn52CUA3hK2ew63w"
 DHAN_SECURITY_IDS = {
     "NIFTY": 13, "BANKNIFTY": 25, "FINNIFTY": 27, "MIDCPNIFTY": 442
 }
