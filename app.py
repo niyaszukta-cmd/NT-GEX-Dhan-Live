@@ -1,6 +1,6 @@
 # ============================================================================
-# NYZTrade LIVE GEX/DEX Dashboard - ENHANCED VERSION
-# Features: Live Data | Weekly Options | VANNA & CHARM | Gamma Flip Zones | Auto-Refresh
+# NYZTrade LIVE GEX/DEX Dashboard - ENHANCED VERSION WITH TODAY'S DATA
+# Features: Live Data | Today's Data | Weekly Options | VANNA & CHARM | Gamma Flip Zones | Auto-Refresh
 # ===========================================================================
 
 # Standard imports
@@ -213,6 +213,20 @@ st.markdown("""
         font-size: 0.9rem;
         color: var(--accent-blue);
     }
+    
+    .today-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        background: rgba(16, 185, 129, 0.15);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        border-radius: 20px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.9rem;
+        color: var(--accent-green);
+        animation: pulse 2s infinite;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -224,6 +238,7 @@ st.markdown("""
 class DhanConfig:
     client_id: str = "1100480354"
     access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY5OTc1MjA2LCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2OTg4ODgwNiwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.LF4-rlL4nxwwdyv4R1vWLTzW2AeJEssxoYA2r1dWtrApkDFnYH4vGmdHFPyFctwV7iVi56pn52CUA3hK2ew63w"
+
 DHAN_SECURITY_IDS = {
     "NIFTY": 13, "BANKNIFTY": 25, "FINNIFTY": 27, "MIDCPNIFTY": 442
 }
@@ -708,7 +723,7 @@ class DhanLiveFetcher:
         return df, meta
 
 # ============================================================================
-# VISUALIZATION FUNCTIONS (SAME AS HISTORICAL VERSION)
+# VISUALIZATION FUNCTIONS (KEEPING ALL FROM ORIGINAL)
 # ============================================================================
 
 def create_intraday_timeline(df: pd.DataFrame, selected_timestamp) -> go.Figure:
@@ -2114,7 +2129,7 @@ def main():
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <h1 class="main-title">📊 NYZTrade Live GEX/DEX Dashboard Enhanced</h1>
-                <p class="sub-title">Live Options Greeks | Weekly/Monthly Options | VANNA & CHARM | Gamma Flip Zones | Auto-Refresh | IST</p>
+                <p class="sub-title">Live Options Greeks | TODAY'S DATA | Weekly/Monthly Options | VANNA & CHARM | Gamma Flip Zones | Auto-Refresh | IST</p>
             </div>
             <div style="display: flex; gap: 12px; align-items: center;">
                 <div class="live-indicator">
@@ -2177,26 +2192,47 @@ def main():
             st.rerun()
         
         st.markdown("---")
-        st.markdown("### 📅 Date Selection (Past 5 Days)")
+        st.markdown("### 📅 Date Selection")
         
-        # Generate past 5 trading days
-        end_date = datetime.now()
-        date_list = []
-        current_date = end_date
+        # **NEW: Today's Data Toggle**
+        fetch_today = st.toggle("🔴 Fetch Today's Data (Live)", value=False, 
+                               help="Enable to fetch live data for today (1-02-2026)")
         
-        while len(date_list) < 5:
-            if current_date.weekday() < 5:  # Monday to Friday
-                date_list.append(current_date.date())
-            current_date = current_date - timedelta(days=1)
-        
-        selected_date = st.selectbox(
-            "Select Trading Day",
-            options=date_list,
-            index=0,
-            format_func=lambda x: x.strftime('%Y-%m-%d (%A)')
-        )
-        
-        target_date = selected_date.strftime('%Y-%m-%d')
+        if fetch_today:
+            # Use today's date
+            today = datetime.now(IST).date()
+            selected_date = today
+            target_date = today.strftime('%Y-%m-%d')
+            
+            st.markdown(f"""
+            <div class="today-badge">
+                📅 TODAY: {target_date}
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.info("🔴 **LIVE MODE**: Fetching today's intraday data")
+        else:
+            # Original past 5 days logic
+            st.markdown("**Past 5 Trading Days**")
+            
+            # Generate past 5 trading days
+            end_date = datetime.now()
+            date_list = []
+            current_date = end_date
+            
+            while len(date_list) < 5:
+                if current_date.weekday() < 5:  # Monday to Friday
+                    date_list.append(current_date.date())
+                current_date = current_date - timedelta(days=1)
+            
+            selected_date = st.selectbox(
+                "Select Trading Day",
+                options=date_list,
+                index=0,
+                format_func=lambda x: x.strftime('%Y-%m-%d (%A)')
+            )
+            
+            target_date = selected_date.strftime('%Y-%m-%d')
         
         st.markdown("---")
         st.markdown("### 📆 Expiry Type & Selection")
@@ -2265,7 +2301,8 @@ def main():
             'strikes': strikes,
             'interval': interval,
             'expiry_code': expiry_code,
-            'expiry_flag': expiry_flag
+            'expiry_flag': expiry_flag,
+            'is_today': fetch_today
         }
         st.session_state.data_fetched = False
         st.session_state.last_refresh_time = time.time()
@@ -2280,29 +2317,43 @@ def main():
             interval = config['interval']
             expiry_code = config.get('expiry_code', 1)
             expiry_flag = config.get('expiry_flag', 'WEEK')
+            is_today = config.get('is_today', False)
         
         if not strikes:
             st.error("❌ Please select at least one strike")
             return
         
         if not st.session_state.get('data_fetched', False) or 'df_data' not in st.session_state:
-            st.markdown(f"""
-            <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, rgba(239,68,68,0.2), rgba(220,38,38,0.2)); 
-                        border-radius: 12px; margin: 20px 0; border: 2px solid rgba(239,68,68,0.4);'>
-                <div style='font-size: 1.5rem; color: #ef4444; font-weight: bold; margin-bottom: 10px;'>
-                    📡 FETCHING LIVE DATA
+            if is_today:
+                st.markdown(f"""
+                <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(5,150,105,0.2)); 
+                            border-radius: 12px; margin: 20px 0; border: 2px solid rgba(16,185,129,0.4);'>
+                    <div style='font-size: 1.5rem; color: #10b981; font-weight: bold; margin-bottom: 10px;'>
+                        🔴 FETCHING TODAY'S LIVE DATA
+                    </div>
+                    <div style='font-size: 0.9rem; color: #6ee7b7;'>
+                        {symbol} | {target_date} (TODAY) | {interval} min | This may take 1-3 minutes
+                    </div>
                 </div>
-                <div style='font-size: 0.9rem; color: #fca5a5;'>
-                    {symbol} | {target_date} | {interval} min | This may take 1-3 minutes
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, rgba(239,68,68,0.2), rgba(220,38,38,0.2)); 
+                            border-radius: 12px; margin: 20px 0; border: 2px solid rgba(239,68,68,0.4);'>
+                    <div style='font-size: 1.5rem; color: #ef4444; font-weight: bold; margin-bottom: 10px;'>
+                        📡 FETCHING LIVE DATA
+                    </div>
+                    <div style='font-size: 0.9rem; color: #fca5a5;'>
+                        {symbol} | {target_date} | {interval} min | This may take 1-3 minutes
+                    </div>
                 </div>
-            </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
             
             st.markdown(f"""
             <div class="metric-card neutral" style="margin: 20px 0;">
                 <div class="metric-label">Fetching Live Data</div>
                 <div class="metric-value" style="color: #ef4444; font-size: 1.2rem;">
-                    {symbol} | {target_date} | {interval} min | {expiry_flag} Expiry {expiry_code}
+                    {symbol} | {target_date} {'(TODAY)' if is_today else ''} | {interval} min | {expiry_flag} Expiry {expiry_code}
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -2370,11 +2421,15 @@ def main():
         # Retrieve from session state
         df = st.session_state.df_data
         meta = st.session_state.meta_data
+        is_today = st.session_state.fetch_config.get('is_today', False)
         
         all_timestamps = sorted(df['timestamp'].unique())
         timestamp_options = [ts.strftime('%H:%M IST') for ts in all_timestamps]
         
-        st.success(f"✅ Data loaded | Records: {len(df):,} | Interval: {meta['interval']} | {meta['expiry_flag']} Expiry Code: {meta['expiry_code']}")
+        if is_today:
+            st.success(f"✅ **TODAY'S DATA LOADED** | Records: {len(df):,} | Interval: {meta['interval']} | {meta['expiry_flag']} Expiry Code: {meta['expiry_code']}")
+        else:
+            st.success(f"✅ Data loaded | Records: {len(df):,} | Interval: {meta['interval']} | {meta['expiry_flag']} Expiry Code: {meta['expiry_code']}")
         
         st.markdown("---")
         st.markdown("### ⏱️ Time Navigation")
@@ -2504,6 +2559,7 @@ def main():
         cols = st.columns(6)
         
         with cols[0]:
+            date_label = f"{target_date} {'🔴 TODAY' if is_today else ''}"
             st.markdown(f"""<div class="metric-card neutral">
                 <div class="metric-label">Date & Time</div>
                 <div class="metric-value" style="font-size: 1.2rem;">{target_date}</div>
@@ -2577,7 +2633,7 @@ def main():
         
         st.markdown("---")
         
-        # ALL CHART TABS (keeping everything from historical version)
+        # ALL CHART TABS (keeping everything from original version)
         tabs = st.tabs(["🎯 GEX", "📊 DEX", "⚡ NET GEX+DEX", "🎪 Hedge Pressure", 
                         "🌊 GEX Flow", "🔄 GEX Overlay", "📊 OI Change GEX", "🌊 DEX Flow", 
                         "🔮 Predictive Models", "🌊 VANNA", "⏰ CHARM",
@@ -2713,7 +2769,7 @@ def main():
             st.download_button(
                 "📄 Download CSV",
                 data=csv,
-                file_name=f"NYZTrade_Live_{symbol}_{target_date}.csv",
+                file_name=f"NYZTrade_Live_{symbol}_{target_date}{'_TODAY' if is_today else ''}.csv",
                 mime="text/csv",
                 use_container_width=True
             )
@@ -2723,13 +2779,13 @@ def main():
         st.info("""
         👋 **Welcome to NYZTrade Live GEX/DEX Dashboard!**
         
-        **🔴 LIVE DATA with AUTO-REFRESH**
-        - ⚡ Real-time options data fetching
+        **🔴 NEW: TODAY'S DATA FEATURE**
+        - ⚡ Enable "Fetch Today's Data" toggle
+        - 📊 Get real-time live intraday data for 1-02-2026
         - 🔄 Auto-refresh with countdown timer
-        - 📊 Manual refresh anytime
         - 🕐 IST timezone display
         
-        **📅 Past 5 Trading Days Available**
+        **📅 Past 5 Trading Days Also Available**
         - Select any of the last 5 trading days
         - Full intraday data with all intervals
         - Complete historical analysis
@@ -2746,8 +2802,8 @@ def main():
         
         **How to use:**
         1. Select index (NIFTY/BANKNIFTY/FINNIFTY/MIDCPNIFTY)
-        2. Enable/disable auto-refresh
-        3. Choose date from past 5 trading days
+        2. Toggle "Fetch Today's Data" for live data
+        3. OR choose from past 5 trading days
         4. Select expiry type (Weekly/Monthly/Mixed)
         5. Select strikes (ATM ±10)
         6. Choose interval (1/5/15/60 minutes)
@@ -2760,9 +2816,9 @@ def main():
     st.markdown("---")
     st.markdown(f"""<div style="text-align: center; padding: 20px; color: #64748b;">
         <p style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">
-        NYZTrade Live GEX/DEX Dashboard | Live Data with Auto-Refresh | Data: Dhan API | IST<br>
+        NYZTrade Live GEX/DEX Dashboard | 🔴 TODAY'S DATA | Auto-Refresh | Data: Dhan API | IST<br>
         Weekly/Monthly/Mixed Options | VANNA & CHARM | Gamma Flip Zones | All Chart Types<br>
-        13 Analysis Tabs | Past 5 Trading Days | 1-min to 60-min Intervals</p>
+        13 Analysis Tabs | Today + Past 5 Days | 1-min to 60-min Intervals</p>
         <p style="font-size: 0.75rem;">⚠️ Educational purposes only. Options trading involves substantial risk.</p>
     </div>""", unsafe_allow_html=True)
 
